@@ -209,11 +209,33 @@ public class PersistenceManager {
      * @param databases 数据库列表
      */
     public void loadData(List<RedisDatabase> databases) {
+        boolean isReload = Thread.currentThread().getName().contains("redis-db-tasks");
+        String operation = isReload ? "重新加载" : "初始加载";
+
+        logger.info("开始{}持久化数据，模式: {}, 文件路径: {}",
+                operation,
+                config.getPersistenceMode(),
+                RedisConstants.PERSISTENCE_RDB.equals(config.getPersistenceMode()) ? rdbFile.getAbsolutePath()
+                        : aofFile.getAbsolutePath());
+
         if (RedisConstants.PERSISTENCE_RDB.equals(config.getPersistenceMode())) {
             loadRdb(databases);
         } else if (RedisConstants.PERSISTENCE_AOF.equals(config.getPersistenceMode())) {
             loadAof(databases);
         }
+
+        // 输出加载后的数据库状态
+        int totalKeys = 0;
+        for (int i = 0; i < databases.size(); i++) {
+            RedisDatabase db = databases.get(i);
+            int dbKeys = db.size();
+            totalKeys += dbKeys;
+            if (dbKeys > 0) {
+                logger.info("数据库 {} 加载了 {} 个键", i, dbKeys);
+            }
+        }
+        logger.info("持久化数据{}完成，共 {} 个数据库，{} 个键",
+                operation, databases.size(), totalKeys);
     }
 
     /**

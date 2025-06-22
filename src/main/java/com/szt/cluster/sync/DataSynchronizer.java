@@ -64,6 +64,16 @@ public class DataSynchronizer {
     private static final int SYNC_PORT_OFFSET = 11000;
 
     /**
+     * 连接失败计数
+     */
+    private int connectionFailureCount = 0;
+
+    /**
+     * 最大连接失败次数
+     */
+    private static final int MAX_CONNECTION_FAILURES = 10;
+
+    /**
      * 构造函数
      *
      * @param config       配置信息
@@ -88,6 +98,12 @@ public class DataSynchronizer {
      * 启动同步服务
      */
     public void start() {
+        // 如果不是集群模式，不启动同步服务
+        if (!config.isClusterEnabled()) {
+            logger.debug("节点 {} 不是集群模式，跳过同步服务启动", config.getNodeId());
+            return;
+        }
+
         if (config.isMaster()) {
             // 主节点启动同步监听服务
             startSyncServer();
@@ -105,25 +121,59 @@ public class DataSynchronizer {
      * 主节点启动同步服务
      */
     private void startSyncServer() {
+        int syncPort = config.getPort() + SYNC_PORT_OFFSET;
+        logger.info("正在启动主节点同步服务，监听端口: {}", syncPort);
+
         Thread serverThread = new Thread(() -> {
-            try (ServerSocket serverSocket = new ServerSocket(config.getPort() + SYNC_PORT_OFFSET)) {
-                logger.info("Data sync server started on port: {}", serverSocket.getLocalPort());
+            try (ServerSocket serverSocket = new ServerSocket(syncPort)) {
+                logger.info("数据同步服务启动成功，监听端口: {}", serverSocket.getLocalPort());
                 while (!Thread.currentThread().isInterrupted()) {
                     try {
                         Socket clientSocket = serverSocket.accept();
+                        logger.info("接收到从节点连接: {}", clientSocket.getRemoteSocketAddress());
                         CompletableFuture.runAsync(() -> handleSyncRequest(clientSocket));
                     } catch (IOException e) {
                         if (!Thread.currentThread().isInterrupted()) {
-                            logger.error("Error accepting sync connection", e);
+                            logger.error("接收同步连接时出错: {}", e.getMessage());
                         }
                     }
                 }
             } catch (IOException e) {
-                logger.error("Error starting sync server", e);
+                // 尝试使用另一个端口
+                tryAlternativePort(syncPort + 1);
             }
         });
         serverThread.setDaemon(true);
         serverThread.setName("sync-server-thread");
+        serverThread.start();
+    }
+
+    /**
+     * 尝试使用替代端口启动同步服务
+     */
+    private void tryAlternativePort(int alternativePort) {
+    
+
+        Thread serverThread = new Thread(() -> {
+            try (ServerSocket serverSocket = new ServerSocket(alternativePort)) {
+                logger.info("数据同步服务在替代端口启动成功: {}", serverSocket.getLocalPort());
+                while (!Thread.currentThread().isInterrupted()) {
+                    try {
+                        Socket clientSocket = serverSocket.accept();
+                        logger.info("接收到从节点连接: {}", clientSocket.getRemoteSocketAddress());
+                        CompletableFuture.runAsync(() -> handleSyncRequest(clientSocket));
+                    } catch (IOException e) {
+                        if (!Thread.currentThread().isInterrupted()) {
+                            logger.error("在替代端口启动同步服务");
+                        }
+                    }
+                }
+            } catch (IOException e) {
+                logger.error("在替代端口启动同步服务");
+            }
+        });
+        serverThread.setDaemon(true);
+        serverThread.setName("sync-server-alt-thread");
         serverThread.start();
     }
 
@@ -183,47 +233,108 @@ public class DataSynchronizer {
     private void syncFromMaster() {
         // 如果正在同步中，跳过本次同步
         if (syncState == SyncState.SYNCING) {
-            logger.info("Sync already in progress, skipping");
+            return;
+        }
+
+        // 如果不是集群模式，跳过同步
+        if (!config.isClusterEnabled()) {
+            return;
+        }
+
+        // 如果连接失败次数过多，暂时不再尝试连接，避免产生大量日志
+        if (connectionFailureCount >= MAX_CONNECTION_FAILURES) {
+            // 每10次尝试才输出一次日志，避免日志过多
+            if (connectionFailureCount % 10 == 0) {
+                logger.debug("已达到最大连接失败次数，暂时跳过同步尝试 (失败次数: {})", connectionFailureCount);
+            }
             return;
         }
 
         syncState = SyncState.SYNCING;
         try {
-            logger.info("Starting data sync from master: {}:{}", masterNode.getHost(), masterNode.getPort());
+            // 尝试连接主节点的同步端口
+            boolean connected = false;
+            Exception lastException = null;
 
-            // 创建到主节点的同步连接
-            Socket socket = new Socket();
-            socket.connect(
-                    new java.net.InetSocketAddress(
-                            masterNode.getHost(),
-                            masterNode.getPort() + SYNC_PORT_OFFSET),
-                    config.getSyncConnectTimeout());
-            socket.setSoTimeout(config.getSyncReadTimeout());
-
-            // 发送同步请求
-            ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream());
-            SyncRequest request = new SyncRequest(config.getNodeId(), lastSyncTime);
-            oos.writeObject(request);
-            oos.flush();
-
-            // 接收同步响应
-            ObjectInputStream ois = new ObjectInputStream(socket.getInputStream());
-            SyncResponse response = (SyncResponse) ois.readObject();
-
-            // 处理同步数据
-            if (response.getData() != null && response.getData().length > 0) {
-                deserializeDatabases(response.getData());
-                lastSyncTime = response.getTimestamp();
-                logger.info("Successfully synced {} bytes of data from master", response.getData().length);
-            } else {
-                logger.warn("Received empty sync data from master");
+            // 尝试连接主端口
+            int primarySyncPort = masterNode.getPort() + SYNC_PORT_OFFSET;
+            try {
+                connected = connectAndSync(primarySyncPort);
+            } catch (Exception e) {
+                lastException = e;
+                // 降低日志级别，避免过多错误日志
+               
             }
 
-            socket.close();
+            // 如果主端口连接失败，尝试备用端口
+            if (!connected) {
+                int alternateSyncPort = primarySyncPort + 1;
+                try {
+                    connected = connectAndSync(alternateSyncPort);
+                } catch (Exception e) {
+                    lastException = e;
+                    // 降低日志级别，避免过多错误日志
+                 
+                }
+            }
+
+            // 如果所有端口都连接失败
+            if (!connected) {
+                connectionFailureCount++;
+                // 只有在特定间隔才输出警告日志，避免日志过多
+                if (connectionFailureCount % 10 == 1) {
+                    logger.error("启动同步服务");
+                }
+            }
         } catch (Exception e) {
-            logger.error("Failed to sync data from master", e);
+            // 降低日志级别，避免过多错误日志
+            logger.debug("从主节点同步数据");
         } finally {
             syncState = SyncState.IDLE;
+        }
+    }
+
+    /**
+     * 连接到指定端口并同步数据
+     * 
+     * @param syncPort 同步端口
+     * @return 是否成功同步
+     * @throws Exception 如果发生错误
+     */
+    private boolean connectAndSync(int syncPort) throws Exception {
+        Socket socket = new Socket();
+        socket.connect(
+                new java.net.InetSocketAddress(
+                        masterNode.getHost(),
+                        syncPort),
+                config.getSyncConnectTimeout());
+        socket.setSoTimeout(config.getSyncReadTimeout());
+
+        logger.debug("成功连接到主节点同步端口: {}:{}", masterNode.getHost(), syncPort);
+
+        // 发送同步请求
+        ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream());
+        SyncRequest request = new SyncRequest(config.getNodeId(), lastSyncTime);
+        oos.writeObject(request);
+        oos.flush();
+
+        // 接收同步响应
+        ObjectInputStream ois = new ObjectInputStream(socket.getInputStream());
+        SyncResponse response = (SyncResponse) ois.readObject();
+
+        // 处理同步数据
+        if (response.getData() != null && response.getData().length > 0) {
+            deserializeDatabases(response.getData());
+            lastSyncTime = response.getTimestamp();
+            logger.info("成功从主节点同步了 {} 字节的数据", response.getData().length);
+            // 重置连接失败计数
+            connectionFailureCount = 0;
+            socket.close();
+            return true;
+        } else {
+            logger.debug("从主节点接收到空数据");
+            socket.close();
+            return false;
         }
     }
 

@@ -53,14 +53,15 @@ public class RedisConfig {
      * 获取当前节点是否为主节点
      */
     public boolean isMaster() {
-        return RedisConstants.ROLE_MASTER.equalsIgnoreCase(nodeRole);
+        return RedisConstants.ROLE_MASTER.equalsIgnoreCase(nodeRole) || "master".equalsIgnoreCase(nodeRole);
     }
 
     /**
      * 获取当前节点是否为从节点
      */
     public boolean isSlave() {
-        return RedisConstants.ROLE_SLAVE.equalsIgnoreCase(nodeRole);
+        return RedisConstants.ROLE_SLAVE.equalsIgnoreCase(nodeRole) || "slave".equalsIgnoreCase(nodeRole) ||
+                nodeRole != null && nodeRole.toLowerCase().startsWith("slave");
     }
 
     /**

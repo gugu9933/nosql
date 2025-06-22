@@ -85,6 +85,7 @@ public class DatabaseManager {
 
         try {
             // 从持久化文件加载数据
+            logger.info("Loading data from persistence storage...");
             persistenceManager.loadData(databases);
 
             // 启动定时持久化任务
@@ -113,6 +114,20 @@ public class DatabaseManager {
                 1,
                 1,
                 TimeUnit.SECONDS);
+
+        // 如果是从节点，定期重新加载持久化文件（无论是否处于集群模式）
+        if (!config.isMaster()) {
+            int reloadInterval = 5; // 每5秒重新加载一次
+            logger.info("从节点将每 {} 秒重新加载一次持久化文件 ({})，节点ID: {}, 集群模式: {}",
+                    reloadInterval, config.getPersistenceMode(),
+                    config.getNodeId(), config.isClusterEnabled() ? "是" : "否");
+
+            scheduler.scheduleWithFixedDelay(
+                    this::reloadPersistenceData,
+                    reloadInterval,
+                    reloadInterval,
+                    TimeUnit.SECONDS);
+        }
     }
 
     /**
@@ -141,6 +156,47 @@ public class DatabaseManager {
         } catch (Exception e) {
             logger.error("Error cleaning expired keys", e);
         }
+    }
+
+    /**
+     * 重新加载持久化数据
+     */
+    private void reloadPersistenceData() {
+        try {
+            logger.info("从节点开始重新加载持久化数据...");
+
+            // 记录加载前的键数量
+            int beforeKeysCount = countTotalKeys();
+
+            // 加载持久化数据
+            persistenceManager.loadData(databases);
+
+            // 记录加载后的键数量
+            int afterKeysCount = countTotalKeys();
+
+            if (afterKeysCount > beforeKeysCount) {
+                logger.info("持久化数据重新加载完成，键数量从 {} 增加到 {}", beforeKeysCount, afterKeysCount);
+            } else if (afterKeysCount < beforeKeysCount) {
+                logger.info("持久化数据重新加载完成，键数量从 {} 减少到 {}", beforeKeysCount, afterKeysCount);
+            } else {
+                logger.debug("持久化数据重新加载完成，键数量未变化 ({})", afterKeysCount);
+            }
+        } catch (Exception e) {
+            logger.error("重新加载持久化数据失败", e);
+        }
+    }
+
+    /**
+     * 计算所有数据库中的键总数
+     */
+    private int countTotalKeys() {
+        int totalKeys = 0;
+        for (RedisDatabase db : databases) {
+            if (db != null) {
+                totalKeys += db.size();
+            }
+        }
+        return totalKeys;
     }
 
     /**
