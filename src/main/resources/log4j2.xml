@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="DEBUG" monitorInterval="30">
+    <Properties>
+        <Property name="LOG_HOME">logs</Property>
+        <Property name="LOG_PATTERN">%d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n</Property>
+    </Properties>
+    
+    <Appenders>
+        <!-- 控制台输出 -->
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout pattern="${LOG_PATTERN}" charset="UTF-8"/>
+        </Console>
+        
+        <!-- 持久化日志文件 -->
+        <RollingFile name="PersistenceFile" 
+                     fileName="${LOG_HOME}/persistence.log"
+                     filePattern="${LOG_HOME}/persistence-%d{yyyy-MM-dd}-%i.log"
+                     immediateFlush="true"
+                     append="true">
+            <PatternLayout pattern="${LOG_PATTERN}" charset="UTF-8"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy/>
+                <SizeBasedTriggeringPolicy size="10 MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="10"/>
+        </RollingFile>
+        
+        <!-- 应用程序日志文件 -->
+        <RollingFile name="AppFile" 
+                     fileName="${LOG_HOME}/app.log"
+                     filePattern="${LOG_HOME}/app-%d{yyyy-MM-dd}-%i.log"
+                     immediateFlush="true"
+                     append="true">
+            <PatternLayout pattern="${LOG_PATTERN}" charset="UTF-8"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy/>
+                <SizeBasedTriggeringPolicy size="10 MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="10"/>
+        </RollingFile>
+        
+        <!-- 调试日志文件 -->
+        <RollingFile name="DebugFile" 
+                     fileName="${LOG_HOME}/debug.log"
+                     filePattern="${LOG_HOME}/debug-%d{yyyy-MM-dd}-%i.log"
+                     immediateFlush="true"
+                     append="true">
+            <PatternLayout pattern="${LOG_PATTERN}" charset="UTF-8"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy/>
+                <SizeBasedTriggeringPolicy size="10 MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="10"/>
+        </RollingFile>
+    </Appenders>
+    
+    <Loggers>
+        <!-- Log4j2 内部日志记录器 -->
+        <Logger name="org.apache.logging.log4j" level="debug" additivity="false">
+            <AppenderRef ref="DebugFile"/>
+            <AppenderRef ref="Console"/>
+        </Logger>
+        
+        <!-- 持久化日志记录器 -->
+        <Logger name="com.borened.redis.db.persistence" level="debug" additivity="false">
+            <AppenderRef ref="PersistenceFile"/>
+            <AppenderRef ref="Console"/>
+        </Logger>
+        
+        <!-- 数据库引擎日志记录器 -->
+        <Logger name="com.borened.redis.db" level="debug" additivity="false">
+            <AppenderRef ref="AppFile"/>
+            <AppenderRef ref="Console"/>
+        </Logger>
+        
+        <!-- 默认日志记录器 -->
+        <Root level="info">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="AppFile"/>
+        </Root>
+    </Loggers>
+</Configuration> 
