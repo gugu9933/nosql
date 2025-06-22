@@ -1,4 +1,4 @@
-package com.szt.core.client;
+package com.szt.client;
 
 import java.io.*;
 import java.net.Socket;
@@ -6,14 +6,14 @@ import java.nio.charset.StandardCharsets;
 import java.util.Scanner;
 
 /**
- * 主节点客户端启动类
- * 连接到Redis主节点并提供命令行界面
+ * 从节点2客户端启动类
+ * 连接到Redis从节点2并提供命令行界面
  */
-public class RedisMasterClientStarter {
+public class RedisSlave2ClientStarter {
 
     public static void main(String[] args) throws IOException {
         String host = "127.0.0.1";
-        int port = 6380; // 默认连接主节点
+        int port = 6382; // 默认连接从节点2
 
         // 如果有命令行参数，解析主机和端口
         if (args.length >= 1) {
@@ -24,8 +24,8 @@ public class RedisMasterClientStarter {
             }
         }
 
-        System.out.println("连接到Redis主节点: " + host + ":" + port);
-        System.out.println("主节点支持所有读写操作");
+        System.out.println("连接到Redis从节点2: " + host + ":" + port);
+        System.out.println("注意：从节点只支持读操作，写操作将被拒绝");
 
         try {
             Socket client = new Socket(host, port);
@@ -44,17 +44,30 @@ public class RedisMasterClientStarter {
             System.out.println(welcomeMsg);
 
             System.out.println("请输入Redis命令（输入'exit'退出）：");
+            System.out.println("支持的只读命令包括：get, exists, type, ttl, keys, lrange, smembers, zrange, hget, hgetall等");
+
+            // 发送READONLY命令，告知服务器这是一个只读连接
+            out.println("READONLY");
+            String readOnlyResponse = readResponse(in);
+            System.out.println("设置只读模式: " + readOnlyResponse);
+
             try {
                 while (true) {
-                    System.out.print(host + ":" + port + " (主节点)> ");
+                    System.out.print(host + ":" + port + " (从节点2)> ");
                     String input = scanner.nextLine();
                     if ("exit".equalsIgnoreCase(input)) {
                         break;
                     }
 
+                    // 检查是否是写命令
+                    String cmd = input.trim().split("\\s+")[0].toLowerCase();
+                    if (isWriteCommand(cmd)) {
+                        System.out.println("错误: 从节点不支持写操作 '" + cmd + "'");
+                        continue;
+                    }
+
                     // 发送命令到服务器
                     out.println(input);
-                    out.flush(); // 确保命令被发送
 
                     // 读取服务器响应
                     String response = readResponse(in);
@@ -72,6 +85,24 @@ public class RedisMasterClientStarter {
             System.err.println("连接服务器失败: " + e.getMessage());
             e.printStackTrace();
         }
+    }
+
+    /**
+     * 判断命令是否为写命令
+     */
+    private static boolean isWriteCommand(String cmd) {
+        String[] writeCommands = {
+                "set", "del", "append", "incr", "decr", "rpush", "lpush", "sadd", "srem",
+                "zadd", "zrem", "hset", "hdel", "expire", "rename", "flushdb", "flushall"
+        };
+
+        for (String writeCmd : writeCommands) {
+            if (writeCmd.equalsIgnoreCase(cmd)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

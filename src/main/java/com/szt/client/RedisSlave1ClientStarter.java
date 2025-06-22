@@ -1,4 +1,4 @@
-package com.szt.core.client;
+package com.szt.client;
 
 import java.io.*;
 import java.net.Socket;
@@ -6,43 +6,26 @@ import java.nio.charset.StandardCharsets;
 import java.util.Scanner;
 
 /**
- * Redis集群客户端启动类
- * 可以连接到集群中的任意节点
+ * 从节点1客户端启动类
+ * 连接到Redis从节点1并提供命令行界面
  */
-public class RedisClusterClientStarter {
+public class RedisSlave1ClientStarter {
 
     public static void main(String[] args) throws IOException {
         String host = "127.0.0.1";
-        int port = 6382; // 默认连接主节点
-        String nodeType = "master"; // 默认连接主节点
+        int port = 6381; // 默认连接从节点1
 
-        // 解析命令行参数
+        // 如果有命令行参数，解析主机和端口
         if (args.length >= 1) {
-            if ("master".equalsIgnoreCase(args[0])) {
-                port = 6380;
-                nodeType = "master";
-            } else if ("slave1".equalsIgnoreCase(args[0])) {
-                port = 6381;
-                nodeType = "slave1";
-            } else if ("slave2".equalsIgnoreCase(args[0])) {
-                port = 6382;
-                nodeType = "slave2";
-            } else {
-                String[] hostPort = args[0].split(":");
-                host = hostPort[0];
-                if (hostPort.length > 1) {
-                    port = Integer.parseInt(hostPort[1]);
-                }
-                nodeType = "custom";
+            String[] hostPort = args[0].split(":");
+            host = hostPort[0];
+            if (hostPort.length > 1) {
+                port = Integer.parseInt(hostPort[1]);
             }
         }
 
-        boolean isSlave = "slave1".equals(nodeType) || "slave2".equals(nodeType);
-
-        System.out.println("连接到Redis" + (isSlave ? "从" : "主") + "节点: " + host + ":" + port);
-        if (isSlave) {
-            System.out.println("注意：从节点只支持读操作，写操作将被拒绝");
-        }
+        System.out.println("连接到Redis从节点1: " + host + ":" + port);
+        System.out.println("注意：从节点只支持读操作，写操作将被拒绝");
 
         try {
             Socket client = new Socket(host, port);
@@ -60,36 +43,31 @@ public class RedisClusterClientStarter {
             String welcomeMsg = in.readLine();
             System.out.println(welcomeMsg);
 
-            // 如果是从节点，发送READONLY命令
-            if (isSlave) {
-                out.println("READONLY");
-                String readOnlyResponse = readResponse(in);
-                System.out.println("设置只读模式: " + readOnlyResponse);
-            }
-
             System.out.println("请输入Redis命令（输入'exit'退出）：");
-            System.out.println("集群信息命令：INFO REPLICATION, ROLE, CLUSTER INFO");
+            System.out.println("支持的只读命令包括：get, exists, type, ttl, keys, lrange, smembers, zrange, hget, hgetall等");
+
+            // 发送READONLY命令，告知服务器这是一个只读连接
+            out.println("READONLY");
+            String readOnlyResponse = readResponse(in);
+            System.out.println("设置只读模式: " + readOnlyResponse);
 
             try {
                 while (true) {
-                    System.out.print(host + ":" + port + " (" + nodeType + ")> ");
+                    System.out.print(host + ":" + port + " (从节点1)> ");
                     String input = scanner.nextLine();
                     if ("exit".equalsIgnoreCase(input)) {
                         break;
                     }
 
-                    // 如果是从节点，检查是否是写命令
-                    if (isSlave) {
-                        String cmd = input.trim().split("\\s+")[0].toLowerCase();
-                        if (isWriteCommand(cmd)) {
-                            System.out.println("错误: 从节点不支持写操作 '" + cmd + "'");
-                            continue;
-                        }
+                    // 检查是否是写命令
+                    String cmd = input.trim().split("\\s+")[0].toLowerCase();
+                    if (isWriteCommand(cmd)) {
+                        System.out.println("错误: 从节点不支持写操作 '" + cmd + "'");
+                        continue;
                     }
 
                     // 发送命令到服务器
                     out.println(input);
-                    out.flush(); // 确保命令被发送
 
                     // 读取服务器响应
                     String response = readResponse(in);

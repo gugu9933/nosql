@@ -1,4 +1,4 @@
-package com.szt.core.client;
+package com.szt.client;
 
 import java.io.*;
 import java.net.Socket;
