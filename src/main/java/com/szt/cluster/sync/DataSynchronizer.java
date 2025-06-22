@@ -263,6 +263,8 @@ public class DataSynchronizer {
             // 逐个反序列化并更新数据库
             for (int i = 0; i < dbCount && i < databases.size(); i++) {
                 RedisDatabase syncedDb = (RedisDatabase) ois.readObject();
+                // 设置事件发布器，因为它是transient的，不会被序列化
+                syncedDb.setEventPublisher(databases.get(i).getEventPublisher());
                 // 用同步的数据库替换本地数据库
                 databases.set(i, syncedDb);
             }

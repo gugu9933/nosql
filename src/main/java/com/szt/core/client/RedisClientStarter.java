@@ -36,7 +36,7 @@ public class RedisClientStarter {
             }
         }
 
-        System.out.println("连接到Redis服务器: " + host + ":" + port);
+        System.out.println("连接到服务器: " + host + ":" + port);
         System.out.println("运行模式: " + (clusterEnabled ? "集群模式" : "单机模式"));
 
         try {
@@ -55,7 +55,7 @@ public class RedisClientStarter {
             String welcomeMsg = in.readLine();
             System.out.println(welcomeMsg);
 
-            System.out.println("请输入Redis命令（输入'exit'退出）：");
+            System.out.println("请输入命令（输入'exit'退出）：");
             try {
                 while (true) {
                     System.out.print(host + ":" + port + "> ");

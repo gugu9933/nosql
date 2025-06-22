@@ -123,14 +123,20 @@ public class AofPersistence implements Persistence {
     @Override
     public void load(File file, List<RedisDatabase> databases) throws Exception {
         if (!file.exists() || file.length() == 0) {
+            logger.info("AOF file does not exist or is empty, skipping load");
             return;
         }
+
+        logger.info("开始从AOF文件加载数据: {}", file.getAbsolutePath());
+        int commandCount = 0;
+        int lineCount = 0;
 
         try (BufferedReader br = new BufferedReader(new FileReader(file))) {
             String line;
             int currentDb = 0;
 
             while ((line = br.readLine()) != null) {
+                lineCount++;
                 if (line.trim().isEmpty()) {
                     continue;
                 }
@@ -138,6 +144,7 @@ public class AofPersistence implements Persistence {
                 // 解析命令
                 String[] parts = line.split("\\s+");
                 String cmd = parts[0].toUpperCase();
+                logger.debug("正在处理AOF命令: {}", line);
 
                 // 处理SELECT命令
                 if ("SELECT".equals(cmd) && parts.length > 1) {
@@ -146,16 +153,21 @@ public class AofPersistence implements Persistence {
                         if (currentDb < 0 || currentDb >= databases.size()) {
                             currentDb = 0;
                         }
+                        logger.debug("切换到数据库: {}", currentDb);
                     } catch (NumberFormatException e) {
                         // 忽略无效的SELECT命令
+                        logger.warn("无效的SELECT命令: {}", line);
                     }
                     continue;
                 }
 
                 // 执行命令
                 executeCommand(cmd, parts, databases.get(currentDb));
+                commandCount++;
             }
         }
+
+        logger.info("AOF文件加载完成，共处理 {} 行，执行 {} 条命令", lineCount, commandCount);
     }
 
     /**
@@ -167,6 +179,7 @@ public class AofPersistence implements Persistence {
      */
     private void executeCommand(String cmd, String[] args, RedisDatabase db) {
         if (db == null) {
+            logger.warn("数据库对象为空，无法执行命令: {}", cmd);
             return;
         }
 
@@ -181,6 +194,9 @@ public class AofPersistence implements Persistence {
                         String value = cmdArgs[1];
                         RedisObject obj = RedisObject.createString(value);
                         db.set(key, obj);
+                        logger.debug("执行SET命令: key={}, value={}", key, value);
+                    } else {
+                        logger.warn("SET命令参数不足: {}", String.join(" ", args));
                     }
                     break;
                 case "LPUSH":
@@ -199,6 +215,9 @@ public class AofPersistence implements Persistence {
                         for (int i = 1; i < cmdArgs.length; i++) {
                             list.add(0, cmdArgs[i]); // 从左侧添加
                         }
+                        logger.debug("执行LPUSH命令: key={}, 添加{}个元素", key, cmdArgs.length - 1);
+                    } else {
+                        logger.warn("LPUSH命令参数不足: {}", String.join(" ", args));
                     }
                     break;
                 case "SADD":
@@ -217,6 +236,9 @@ public class AofPersistence implements Persistence {
                         for (int i = 1; i < cmdArgs.length; i++) {
                             set.add(cmdArgs[i]);
                         }
+                        logger.debug("执行SADD命令: key={}, 添加{}个元素", key, cmdArgs.length - 1);
+                    } else {
+                        logger.warn("SADD命令参数不足: {}", String.join(" ", args));
                     }
                     break;
                 case "HSET":
@@ -236,6 +258,9 @@ public class AofPersistence implements Persistence {
                         // 设置哈希字段
                         Map<String, String> hash = obj.getTypedData();
                         hash.put(field, value);
+                        logger.debug("执行HSET命令: key={}, field={}, value={}", key, field, value);
+                    } else {
+                        logger.warn("HSET命令参数不足: {}", String.join(" ", args));
                     }
                     break;
                 case "PEXPIRE":
@@ -243,15 +268,20 @@ public class AofPersistence implements Persistence {
                         String key = cmdArgs[0];
                         try {
                             long ttl = Long.parseLong(cmdArgs[1]);
-                            db.expire(key, ttl);
+                            boolean result = db.expire(key, ttl);
+                            logger.debug("执行PEXPIRE命令: key={}, ttl={}, 结果={}", key, ttl, result);
                         } catch (NumberFormatException e) {
-                            logger.warn("Invalid expire time in AOF file: {}", cmdArgs[1]);
+                            logger.warn("无效的过期时间: {}", cmdArgs[1]);
                         }
+                    } else {
+                        logger.warn("PEXPIRE命令参数不足: {}", String.join(" ", args));
                     }
                     break;
+                default:
+                    logger.warn("不支持的命令: {}", cmd);
             }
         } catch (Exception e) {
-            logger.error("Error executing command from AOF file: {} {}", cmd, String.join(" ", cmdArgs), e);
+            logger.error("执行AOF命令出错: {} {}", cmd, String.join(" ", cmdArgs), e);
         }
     }
 

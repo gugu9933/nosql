@@ -196,6 +196,8 @@ public class RedisServer {
                     clusterManager.getClusterCommunicator(),
                     databaseManager.getDatabases(),
                     masterNode);
+
+            // 启动数据同步器，开始从主节点同步数据
             dataSynchronizer.start();
         }
     }

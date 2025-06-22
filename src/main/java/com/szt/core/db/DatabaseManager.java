@@ -4,7 +4,7 @@ import com.szt.common.constant.RedisConstants;
 import com.szt.common.exception.RedisException;
 import com.szt.config.RedisConfig;
 import com.szt.event.KeyEventPublisher;
-import com.szt.storage.persistence.PersistenceManager;
+import com.szt.storage.PersistenceManager;
 import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

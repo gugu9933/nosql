@@ -323,4 +323,13 @@ public class RedisDatabase implements Serializable {
             }
         }
     }
+
+    /**
+     * 获取事件发布器
+     *
+     * @return 事件发布器
+     */
+    public KeyEventPublisher getEventPublisher() {
+        return eventPublisher;
+    }
 }
