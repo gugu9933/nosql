@@ -1,11 +1,11 @@
 package com.szt.command;
 
-import com.redis.command.impl.*;
-import com.redis.common.exception.RedisCommandException;
-import com.redis.common.exception.RedisException;
-import com.redis.core.data.RedisObject;
-import com.redis.core.db.DatabaseManager;
-import com.redis.core.db.RedisDatabase;
+import com.szt.command.impl.*;
+import com.szt.common.exception.RedisCommandException;
+import com.szt.common.exception.RedisException;
+import com.szt.core.data.RedisObject;
+import com.szt.core.db.DatabaseManager;
+import com.szt.core.db.RedisDatabase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

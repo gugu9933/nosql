@@ -1,6 +1,6 @@
 package com.szt.command;
 
-import com.redis.core.db.RedisDatabase;
+import com.szt.core.db.RedisDatabase;
 import lombok.Data;
 
 /**
